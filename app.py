@@ -1,80 +1,104 @@
 import os
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+import streamlit as st
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 
-# Load environment variables from a .env file if it exists
+# Load environment variables
 load_dotenv()
+api_key = os.getenv("GEMINI_API_KEY")
 
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+# Page Config
+st.set_page_config(
+    page_title="Chemical Matrix",
+    page_icon="🧪",
+    layout="centered"
 )
 
-# Grab API key from environment variables
-api_key = os.getenv("GEMINI_API_KEY")
-client = genai.Client(api_key=api_key) if api_key else None
+# Custom Styling for Dark Theme & Glassmorphism feel
+st.markdown("""
+    <style>
+    .stApp {
+        background-color: #030712;
+        color: #f3f4f6;
+    }
+    .stChatMessage {
+        background-color: rgba(31, 41, 55, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 1rem;
+        padding: 1rem;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-class QueryRequest(BaseModel):
-    message: str
+# App Header
+st.title("🧪 Chemical Matrix")
+st.caption("Powered by Gemini & Streamlit")
 
-@app.get("/", response_class=HTMLResponse)
-def read_root():
-    try:
-        with open("index.html", "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        return "<h3>index.html file not found in the project directory!</h3>"
+# Initialize Gemini Client
+if not api_key:
+    st.error("⚠️ GEMINI_API_KEY is missing! Please set it in your environment or a .env file.")
+    client = None
+else:
+    client = genai.Client(api_key=api_key)
 
-import re
+# Initialize Chat History in Session State
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {"role": "assistant", "content": "Hello! I am your advanced AI chemistry & periodic table assistant. Ask me anything about elements, properties, or compounds!"}
+    ]
 
-def clean_latex(text: str) -> str:
-    """Removes LaTeX symbols, dollar signs, and backslash formatting from AI responses."""
-    if not text:
-        return ""
-    # Remove math display dollar signs
-    text = text.replace("$", "")
-    # Clean common LaTeX commands like \text{...} or \circ
-    text = re.sub(r'\\text\{([^}]*)\}', r'\1', text)
-    text = text.replace(r'\circ', '°')
-    text = text.replace(r'\$', '$')
-    return text
+# Display Chat History
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-@app.post("/api/chat")
-def chat_with_agent(req: QueryRequest):
-    if not client:
-        raise HTTPException(
-            status_code=500, 
-            detail="GEMINI_API_KEY is missing or not set in the server environment."
-        )
+# Quick Prompt Buttons
+cols = st.columns(3)
+with cols[0]:
+    if st.button("🟡 Gold Properties"):
+        st.session_state.pending_prompt = "Tell me about Gold (Au)"
+with cols[1]:
+    if st.button("⬛ Carbon Structure"):
+        st.session_state.pending_prompt = "What is the atomic structure of Carbon?"
+with cols[2]:
+    if st.button("🎈 Noble Gases"):
+        st.session_state.pending_prompt = "Explain noble gases"
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-flash-latest",
-            contents=req.message,
-            config=types.GenerateContentConfig(
-                system_instruction=(
-                    "You are a helpful AI chemistry assistant for Chemical Matrix. "
-                    "CRITICAL RULE: Do NOT use any LaTeX syntax, backslashes, or dollar signs. "
-                    "Write all numbers, units (like g/cm3), and temperatures (like °C) in plain text."
-                ),
-                temperature=0.7,
-            )
-        )
-        
-        # Clean any accidental LaTeX before sending to frontend
-        cleaned_text = clean_latex(response.text)
-        return {"response": cleaned_text}
-        
-    except Exception as e:
-        print(f"\n--- CRITICAL API ERROR --- \n{str(e)}\n--------------------------")
-        raise HTTPException(status_code=500, detail=str(e))
+# Handle User Input (via chat box or preset buttons)
+user_input = st.chat_input("Ask about an element (e.g., Uranium, Copper, Oxygen)...")
+
+if "pending_prompt" in st.session_state:
+    user_input = st.session_state.pending_prompt
+    del st.session_state.pending_prompt
+
+if user_input:
+    # Append user message
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    with st.chat_message("user"):
+        st.markdown(user_input)
+
+    # Generate Response from Gemini
+    with st.chat_message("assistant"):
+        if not client:
+            st.error("API client not initialized.")
+        else:
+            with st.spinner("Analyzing properties..."):
+                try:
+                    response = client.models.generate_content(
+                        model="gemini-flash-latest",
+                        contents=user_input,
+                        config=types.GenerateContentConfig(
+                            system_instruction=(
+                                "You are a helpful AI chemistry assistant for Chemical Matrix. "
+                                "CRITICAL RULE: Do NOT use any LaTeX syntax, backslashes, or dollar signs. "
+                                "Write all numbers, units (like g/cm3), and temperatures (like °C) in plain text."
+                            ),
+                            temperature=0.7,
+                        )
+                    )
+                    reply_text = response.text
+                    st.markdown(reply_text)
+                    st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                except Exception as e:
+                    st.error(f"Error getting response: {str(e)}")
