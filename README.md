@@ -90,12 +90,12 @@ GEMINI_API_KEY=your_actual_gemini_api_key_here
 
 1. Start the FastAPI development server:
    ```bash
-   uvicorn app:app --reload
+   streamlit run streamlit_app.py
    ```
 
 2. Open your web browser and go to:
    ```text
-   http://127.0.0.1:8000
+   https://chemical-matrix.streamlit.app/
    ```
 
 ---
