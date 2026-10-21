@@ -108,9 +108,9 @@ if user_input:
             st.error("API client not initialized.")
         else:
             try:
-                # Stream content chunk by chunk
+                # Use a specific, fast model ID instead of -latest
                 response_stream = client.models.generate_content_stream(
-                    model="gemini-flash-latest",
+                    model="gemini-2.5-flash",
                     contents=user_input,
                     config=types.GenerateContentConfig(
                         system_instruction=(
@@ -126,6 +126,9 @@ if user_input:
                     for chunk in response_stream:
                         if chunk.text:
                             yield clean_latex(chunk.text)
+
+                full_response = st.write_stream(stream_generator())
+                st.session_state.messages.append({"role": "matrix_bot", "content": full_response})
 
                 # st.write_stream renders the response dynamically as it types
                 full_response = st.write_stream(stream_generator)
